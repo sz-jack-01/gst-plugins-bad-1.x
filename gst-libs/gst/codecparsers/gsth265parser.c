@@ -590,11 +590,11 @@ gst_h265_parse_vui_parameters (GstH265SPS * sps, NalReader * nr)
     READ_UINT8 (nr, vui->tiles_fixed_structure_flag, 1);
     READ_UINT8 (nr, vui->motion_vectors_over_pic_boundaries_flag, 1);
     READ_UINT8 (nr, vui->restricted_ref_pic_lists_flag, 1);
-    READ_UE_MAX (nr, vui->min_spatial_segmentation_idc, 4096);
-    READ_UE_MAX (nr, vui->max_bytes_per_pic_denom, 16);
-    READ_UE_MAX (nr, vui->max_bits_per_min_cu_denom, 16);
-    READ_UE_MAX (nr, vui->log2_max_mv_length_horizontal, 16);
-    READ_UE_MAX (nr, vui->log2_max_mv_length_vertical, 15);
+    READ_UE (nr, vui->min_spatial_segmentation_idc);
+    READ_UE (nr, vui->max_bytes_per_pic_denom);
+    READ_UE (nr, vui->max_bits_per_min_cu_denom);
+    READ_UE (nr, vui->log2_max_mv_length_horizontal);
+    READ_UE (nr, vui->log2_max_mv_length_vertical);
   }
 
   return TRUE;
