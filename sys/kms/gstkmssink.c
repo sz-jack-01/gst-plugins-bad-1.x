@@ -471,6 +471,9 @@ configure_mode_setting (GstKMSSink * self, GstVideoInfo * vinfo)
   if (err)
     goto modesetting_failed;
 
+  self->hdisplay = mode->hdisplay;
+  self->vdisplay = mode->vdisplay;
+
   g_clear_pointer (&self->tmp_kmsmem, gst_memory_unref);
   self->tmp_kmsmem = (GstMemory *) kmsmem;
 
@@ -1606,7 +1609,14 @@ gst_kms_sink_show_frame (GstVideoSink * vsink, GstBuffer * buf)
   GST_OBJECT_LOCK (self);
   if (self->modesetting_enabled) {
     self->buffer_id = fb_id;
-    goto sync_frame;
+
+    if (!self->render_rect.w || !self->render_rect.h)
+      goto sync_frame;
+
+    if (!self->render_rect.x && !self->render_rect.y &&
+        self->render_rect.w == self->hdisplay &&
+        self->render_rect.h == self->vdisplay)
+      goto sync_frame;
   }
 
   if ((crop = gst_buffer_get_video_crop_meta (buffer))) {
