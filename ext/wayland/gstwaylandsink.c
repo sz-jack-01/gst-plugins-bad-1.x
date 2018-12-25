@@ -675,9 +675,10 @@ render_last_buffer (GstWaylandSink * sink, gboolean redraw)
   sink->callback = callback;
   wl_callback_add_listener (callback, &frame_callback_listener, sink);
 
-  if (G_UNLIKELY (sink->video_info_changed && !redraw)) {
+  if (G_UNLIKELY ((sink->video_info_changed && !redraw) || sink->resend_info)) {
     info = &sink->video_info;
     sink->video_info_changed = FALSE;
+    sink->resend_info = FALSE;
   }
   gst_wl_window_render (sink->window, wlbuffer, info);
 }
@@ -941,17 +942,20 @@ gst_wayland_sink_set_window_handle (GstVideoOverlay * overlay, guintptr handle)
 
   g_return_if_fail (sink != NULL);
 
-  if (sink->window != NULL) {
-    GST_WARNING_OBJECT (sink, "changing window handle is not supported");
+  if (sink->window_handle == handle)
     return;
-  }
+
+  sink->window_handle = handle;
 
   g_mutex_lock (&sink->render_lock);
 
+  if (sink->window != NULL) {
+    GST_WARNING_OBJECT (sink, "changing window handle is dangerous");
+    g_clear_object (&sink->window);
+  }
+
   GST_DEBUG_OBJECT (sink, "Setting window handle %" GST_PTR_FORMAT,
       (void *) handle);
-
-  g_clear_object (&sink->window);
 
   if (handle) {
     if (G_LIKELY (gst_wayland_sink_find_display (sink))) {
@@ -965,6 +969,12 @@ gst_wayland_sink_set_window_handle (GstVideoOverlay * overlay, guintptr handle)
       } else {
         sink->window = gst_wl_window_new_in_surface (sink->display, surface,
             &sink->render_lock);
+
+        if (sink->last_buffer) {
+          /* Resend video info to force resize video surface */
+          sink->resend_info = TRUE;
+          sink->redraw_pending = FALSE;
+        }
       }
     } else {
       GST_ERROR_OBJECT (sink, "Failed to find display handle, "

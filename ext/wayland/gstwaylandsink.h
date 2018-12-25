@@ -57,6 +57,7 @@ struct _GstWaylandSink
   GstWlWindow *window;
   GstBufferPool *pool;
   gboolean use_dmabuf;
+  guintptr window_handle;
 
   gboolean video_info_changed;
   GstVideoInfo video_info;
@@ -64,6 +65,7 @@ struct _GstWaylandSink
 
   gchar *display_name;
 
+  gboolean resend_info;
   gboolean redraw_pending;
   GMutex render_lock;
   GstBuffer *last_buffer;
