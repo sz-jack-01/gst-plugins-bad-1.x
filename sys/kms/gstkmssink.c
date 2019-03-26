@@ -56,6 +56,7 @@
 #include <xf86drmMode.h>
 #include <drm_fourcc.h>
 #include <string.h>
+#include <fcntl.h>
 
 #include "gstkmssink.h"
 #include "gstkmsutils.h"
@@ -817,6 +818,10 @@ gst_kms_sink_start (GstBaseSink * bsink)
     self->fd = drmOpen (self->devname, self->bus_id);
   else
     self->fd = kms_open (&self->devname);
+
+  if (self->fd < 0)
+    self->fd = open ("/dev/dri/card0", O_RDWR);
+
   if (self->fd < 0)
     goto open_failed;
 
