@@ -166,10 +166,21 @@ gst_kms_sink_expose (GstVideoOverlay * overlay)
 }
 
 static void
+gst_kms_sink_set_window_handle (GstVideoOverlay * overlay, guintptr handle)
+{
+  GstKMSSink *self = GST_KMS_SINK (overlay);
+
+  g_return_if_fail (self != NULL);
+
+  self->window_handle = handle;
+}
+
+static void
 gst_kms_sink_video_overlay_init (GstVideoOverlayInterface * iface)
 {
   iface->expose = gst_kms_sink_expose;
   iface->set_render_rectangle = gst_kms_sink_set_render_rectangle;
+  iface->set_window_handle = gst_kms_sink_set_window_handle;
 }
 
 static int
@@ -1159,6 +1170,8 @@ gst_kms_sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
     self->render_rect = self->pending_rect;
   }
   GST_OBJECT_UNLOCK (self);
+
+  gst_video_overlay_prepare_window_handle (GST_VIDEO_OVERLAY (bsink));
 
   GST_DEBUG_OBJECT (self, "negotiated caps = %" GST_PTR_FORMAT, caps);
 

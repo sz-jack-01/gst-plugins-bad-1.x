@@ -93,6 +93,8 @@ struct _GstKMSSink {
   /* reconfigure info if driver doesn't scale */
   GstVideoRectangle pending_rect;
   gboolean reconfigure;
+
+  guintptr window_handle;
 };
 
 struct _GstKMSSinkClass {
