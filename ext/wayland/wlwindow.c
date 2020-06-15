@@ -24,6 +24,8 @@
 #include <config.h>
 #endif
 
+#include <stdlib.h>
+
 #include "wlwindow.h"
 #include "wlshmallocator.h"
 #include "wlbuffer.h"
@@ -356,6 +358,11 @@ gst_wl_window_new_in_surface (GstWlDisplay * display,
       wl_subcompositor_get_subsurface (display->subcompositor,
       window->area_surface, parent);
   wl_subsurface_set_desync (window->area_subsurface);
+
+  if (g_getenv ("WAYLANDSINK_PLACE_ABOVE"))
+    wl_subsurface_place_above (window->area_subsurface, parent);
+  else
+    wl_subsurface_place_below (window->area_subsurface, parent);
 
   wl_surface_commit (parent);
 
