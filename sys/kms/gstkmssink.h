@@ -53,6 +53,7 @@ struct _GstKMSSink {
   gint crtc_id;
   gint plane_id;
   guint pipe;
+  guint saved_zpos;
 
   /* crtc data */
   guint16 hdisplay, vdisplay;
