@@ -89,7 +89,7 @@ static GstFlowReturn gst_jpeg_parse_pre_push_frame (GstBaseParse * bparse,
 
 #define gst_jpeg_parse_parent_class parent_class
 G_DEFINE_TYPE (GstJpegParse, gst_jpeg_parse, GST_TYPE_BASE_PARSE);
-GST_ELEMENT_REGISTER_DEFINE (jpegparse, "jpegparse", GST_RANK_NONE,
+GST_ELEMENT_REGISTER_DEFINE (jpegparse, "jpegparse", GST_RANK_SECONDARY,
     GST_TYPE_JPEG_PARSE);
 
 static void
@@ -115,7 +115,7 @@ gst_jpeg_parse_class_init (GstJpegParseClass * klass)
 
   gst_element_class_set_static_metadata (gstelement_class,
       "JPEG stream parser",
-      "Video/Parser",
+      "Codec/Parser/Video/Image",
       "Parse JPEG images into single-frame buffers",
       "Arnout Vandecappelle (Essensium/Mind) <arnout@mind.be>");
 
