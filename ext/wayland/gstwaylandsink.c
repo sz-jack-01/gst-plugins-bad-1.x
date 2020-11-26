@@ -1031,7 +1031,7 @@ gst_wayland_sink_expose (GstVideoOverlay * overlay)
   GST_DEBUG_OBJECT (sink, "expose");
 
   g_mutex_lock (&sink->render_lock);
-  if (sink->last_buffer && !sink->redraw_pending) {
+  if (sink->window && sink->last_buffer && !sink->redraw_pending) {
     GST_DEBUG_OBJECT (sink, "redrawing last buffer");
     render_last_buffer (sink, TRUE);
   }
