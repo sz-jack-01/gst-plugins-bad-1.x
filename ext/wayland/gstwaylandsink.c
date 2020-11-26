@@ -287,6 +287,8 @@ gst_wayland_sink_finalize (GObject * object)
 
   GST_DEBUG_OBJECT (sink, "Finalizing the sink..");
 
+  if (sink->callback)
+    wl_callback_destroy (sink->callback);
   if (sink->last_buffer)
     gst_buffer_unref (sink->last_buffer);
   if (sink->display)
