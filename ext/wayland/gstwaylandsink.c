@@ -223,6 +223,8 @@ gst_wayland_sink_init (GstWaylandSink * sink)
 {
   g_mutex_init (&sink->display_lock);
   g_mutex_init (&sink->render_lock);
+
+  sink->window_handle = 1;
 }
 
 static void
@@ -721,6 +723,12 @@ gst_wayland_sink_show_frame (GstVideoSink * vsink, GstBuffer * buffer)
     g_mutex_unlock (&sink->render_lock);
     gst_video_overlay_prepare_window_handle (GST_VIDEO_OVERLAY (sink));
     g_mutex_lock (&sink->render_lock);
+
+    /* HACK: Defer window prepare when getting zero window handle */
+    if (!sink->window_handle) {
+      GST_LOG_OBJECT (sink, "buffer %p dropped (window not ready)", buffer);
+      goto done;
+    }
 
     if (!sink->window) {
       /* if we were not provided a window, create one ourselves */
