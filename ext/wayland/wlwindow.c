@@ -234,6 +234,42 @@ gst_wl_window_new_internal (GstWlDisplay * display, GMutex * render_lock)
   return window;
 }
 
+static void
+gst_wl_window_set_flags (GstWlWindow * window, const char *flags)
+{
+  /* HACK: set window flags through title */
+  char s[128] = "flags=";
+  strcat (s, flags);
+
+  if (!window)
+    return;
+
+  if (window->xdg_toplevel)
+    xdg_toplevel_set_title (window->xdg_toplevel, s);
+  else if (window->wl_shell_surface)
+    wl_shell_surface_set_title (window->wl_shell_surface, s);
+}
+
+void
+gst_wl_window_ensure_layer (GstWlWindow * window, GstWlWindowLayer layer)
+{
+  char s[128] = "flags=";
+
+  switch (layer) {
+    case GST_WL_WINDOW_LAYER_TOP:
+      strcat (s, "stay-on-top|-stay-on-bottom");
+      break;
+    case GST_WL_WINDOW_LAYER_NORMAL:
+      strcat (s, "-stay-on-top|-stay-on-bottom");
+      break;
+    case GST_WL_WINDOW_LAYER_BOTTOM:
+      strcat (s, "-stay-on-top|stay-on-bottom");
+      break;
+    default:
+      return;
+  }
+}
+
 void
 gst_wl_window_ensure_fullscreen (GstWlWindow * window, gboolean fullscreen)
 {
@@ -256,7 +292,7 @@ gst_wl_window_ensure_fullscreen (GstWlWindow * window, gboolean fullscreen)
 
 GstWlWindow *
 gst_wl_window_new_toplevel (GstWlDisplay * display, const GstVideoInfo * info,
-    gboolean fullscreen, GMutex * render_lock,
+    gboolean fullscreen, GstWlWindowLayer layer, GMutex * render_lock,
     GstVideoRectangle * render_rectangle)
 {
   GstWlWindow *window;
@@ -287,6 +323,7 @@ gst_wl_window_new_toplevel (GstWlDisplay * display, const GstVideoInfo * info,
         &xdg_toplevel_listener, window);
 
     gst_wl_window_ensure_fullscreen (window, fullscreen);
+    gst_wl_window_ensure_layer (window, layer);
 
     /* Finally, commit the xdg_surface state as toplevel */
     window->configured = FALSE;

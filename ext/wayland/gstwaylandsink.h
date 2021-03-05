@@ -62,6 +62,7 @@ struct _GstWaylandSink
   gboolean video_info_changed;
   GstVideoInfo video_info;
   gboolean fullscreen;
+  GstWlWindowLayer layer;
 
   gchar *display_name;
 
