@@ -64,6 +64,7 @@ struct _GstWaylandSink
   gboolean fullscreen;
   GstWlWindowLayer layer;
   gdouble alpha;
+  GstWlWindowFillMode fill_mode;
 
   gchar *display_name;
 

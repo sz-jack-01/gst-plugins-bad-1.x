@@ -66,8 +66,11 @@ enum
   PROP_FULLSCREEN,
   PROP_LAYER,
   PROP_ALPHA,
+  PROP_FILL_MODE,
   PROP_LAST
 };
+
+static GstWlWindowFillMode DEFAULT_FILL_MODE = GST_WL_WINDOW_FIT;
 
 GST_DEBUG_CATEGORY (gstwayland_debug);
 #define GST_CAT_DEFAULT gstwayland_debug
@@ -185,6 +188,24 @@ gst_wl_window_layer_get_type (void)
   return layer;
 }
 
+#define GST_TYPE_WL_WINDOW_FILL_MODE (gst_wl_window_fill_mode_get_type ())
+static GType
+gst_wl_window_fill_mode_get_type (void)
+{
+  static GType mode = 0;
+
+  if (!mode) {
+    static const GEnumValue modes[] = {
+      {GST_WL_WINDOW_STRETCH, "Ignore aspect ratio", "stretch"},
+      {GST_WL_WINDOW_FIT, "Keep aspect ratio", "fit"},
+      {GST_WL_WINDOW_CROP, "Keep aspect ratio by expanding", "crop"},
+      {0, NULL, NULL}
+    };
+    mode = g_enum_register_static ("GstWlWindowFillMode", modes);
+  }
+  return mode;
+}
+
 static void
 gst_wayland_sink_class_init (GstWaylandSinkClass * klass)
 {
@@ -244,6 +265,15 @@ gst_wayland_sink_class_init (GstWaylandSinkClass * klass)
           "Wayland window alpha", 0.0, 1.0, 1.0,
           G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 
+  if (g_getenv ("WAYLANDSINK_STRETCH"))
+    DEFAULT_FILL_MODE = GST_WL_WINDOW_STRETCH;
+
+  g_object_class_install_property (gobject_class, PROP_FILL_MODE,
+      g_param_spec_enum ("fill-mode", "Window fill mode",
+          "Wayland window fill mode",
+          GST_TYPE_WL_WINDOW_FILL_MODE, DEFAULT_FILL_MODE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
   gst_video_overlay_install_properties (gobject_class, PROP_LAST);
 
   gst_type_mark_as_plugin_api (GST_TYPE_WAYLAND_VIDEO, 0);
@@ -258,6 +288,7 @@ gst_wayland_sink_init (GstWaylandSink * sink)
   sink->window_handle = 1;
   sink->layer = GST_WL_WINDOW_LAYER_NORMAL;
   sink->alpha = 1.0;
+  sink->fill_mode = DEFAULT_FILL_MODE;
 }
 
 static void
@@ -297,6 +328,19 @@ gst_wayland_sink_set_alpha (GstWaylandSink * sink, gdouble alpha)
 }
 
 static void
+gst_wayland_sink_set_fill_mode (GstWaylandSink * sink,
+    GstWlWindowFillMode fill_mode)
+{
+  if (fill_mode == sink->fill_mode)
+    return;
+
+  g_mutex_lock (&sink->render_lock);
+  sink->fill_mode = fill_mode;
+  sink->resend_info = FALSE;
+  g_mutex_unlock (&sink->render_lock);
+}
+
+static void
 gst_wayland_sink_get_property (GObject * object,
     guint prop_id, GValue * value, GParamSpec * pspec)
 {
@@ -321,6 +365,11 @@ gst_wayland_sink_get_property (GObject * object,
     case PROP_ALPHA:
       GST_OBJECT_LOCK (sink);
       g_value_set_double (value, sink->alpha);
+      GST_OBJECT_UNLOCK (sink);
+      break;
+    case PROP_FILL_MODE:
+      GST_OBJECT_LOCK (sink);
+      g_value_set_enum (value, sink->fill_mode);
       GST_OBJECT_UNLOCK (sink);
       break;
     default:
@@ -354,6 +403,11 @@ gst_wayland_sink_set_property (GObject * object,
     case PROP_ALPHA:
       GST_OBJECT_LOCK (sink);
       gst_wayland_sink_set_alpha (sink, g_value_get_double (value));
+      GST_OBJECT_UNLOCK (sink);
+      break;
+    case PROP_FILL_MODE:
+      GST_OBJECT_LOCK (sink);
+      gst_wayland_sink_set_fill_mode (sink, g_value_get_enum (value));
       GST_OBJECT_UNLOCK (sink);
       break;
     default:
@@ -763,6 +817,7 @@ render_last_buffer (GstWaylandSink * sink, gboolean redraw)
     sink->video_info_changed = FALSE;
     sink->resend_info = FALSE;
   }
+  sink->window->fill_mode = sink->fill_mode;
   gst_wl_window_render (sink->window, wlbuffer, info);
 }
 

@@ -37,6 +37,13 @@ G_BEGIN_DECLS
 typedef struct _GstWlWindow GstWlWindow;
 typedef struct _GstWlWindowClass GstWlWindowClass;
 
+typedef enum
+{
+  GST_WL_WINDOW_STRETCH = 0,
+  GST_WL_WINDOW_FIT = 1,
+  GST_WL_WINDOW_CROP = 2,
+} GstWlWindowFillMode;
+
 struct _GstWlWindow
 {
   GObject parent_instance;
@@ -71,6 +78,8 @@ struct _GstWlWindow
   /* when this is not set both the area_surface and the video_surface are not
    * visible and certain steps should be skipped */
   gboolean is_area_surface_mapped;
+
+  GstWlWindowFillMode fill_mode;
 };
 
 struct _GstWlWindowClass

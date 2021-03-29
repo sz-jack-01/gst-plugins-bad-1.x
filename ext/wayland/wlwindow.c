@@ -467,7 +467,33 @@ gst_wl_window_resize_video_surface (GstWlWindow * window, gboolean commit)
   dst.h = window->render_rectangle.h;
 
   if (window->video_viewport) {
-    gst_video_sink_center_rect (src, dst, &res, TRUE);
+    if (window->fill_mode == GST_WL_WINDOW_STRETCH) {
+      res = dst;
+    } else if (window->fill_mode == GST_WL_WINDOW_FIT) {
+      gst_video_sink_center_rect (src, dst, &res, TRUE);
+    } else if (window->fill_mode == GST_WL_WINDOW_CROP) {
+      gdouble src_ratio, dst_ratio;
+
+      src_ratio = (gdouble) src.w / src.h;
+      dst_ratio = (gdouble) dst.w / dst.h;
+
+      if (src_ratio < dst_ratio) {
+        int h = src.w / dst_ratio;
+        src.y = (src.h - h) / 2;
+        src.h = h;
+      } else if (src_ratio > dst_ratio) {
+        int w = src.h * dst_ratio;
+        src.x = (src.w - w) / 2;
+        src.w = w;
+      }
+
+      wp_viewport_set_source (window->video_viewport,
+          wl_fixed_from_int (src.x), wl_fixed_from_int (src.y),
+          wl_fixed_from_int (src.w), wl_fixed_from_int (src.h));
+
+      res = dst;
+    }
+
     wp_viewport_set_destination (window->video_viewport, res.w, res.h);
   } else {
     gst_video_sink_center_rect (src, dst, &res, FALSE);
