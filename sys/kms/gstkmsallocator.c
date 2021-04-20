@@ -36,6 +36,7 @@
 
 /* it needs to be below because is internal to libdrm */
 #include <drm.h>
+#include <drm_fourcc.h>
 
 #include <gst/allocators/gstdmabuf.h>
 
@@ -147,6 +148,7 @@ extrapolate_stride (const GstVideoFormatInfo * finfo, gint plane, gint stride)
   switch (finfo->format) {
     case GST_VIDEO_FORMAT_NV12:
     case GST_VIDEO_FORMAT_NV12_64Z32:
+    case GST_VIDEO_FORMAT_NV12_10LE40:
     case GST_VIDEO_FORMAT_NV21:
     case GST_VIDEO_FORMAT_NV16:
     case GST_VIDEO_FORMAT_NV61:
@@ -443,7 +445,7 @@ static gboolean
 gst_kms_allocator_add_fb (GstKMSAllocator * alloc, GstKMSMemory * kmsmem,
     gsize in_offsets[GST_VIDEO_MAX_PLANES], GstVideoInfo * vinfo)
 {
-  gint i, ret;
+  gint i, ret = -1;
   gint num_planes = GST_VIDEO_INFO_N_PLANES (vinfo);
   guint32 w, h, fmt, bo_handles[4] = { 0, };
   guint32 pitches[4] = { 0, };
@@ -469,8 +471,50 @@ gst_kms_allocator_add_fb (GstKMSAllocator * alloc, GstKMSMemory * kmsmem,
   GST_DEBUG_OBJECT (alloc, "bo handles: %d, %d, %d, %d", bo_handles[0],
       bo_handles[1], bo_handles[2], bo_handles[3]);
 
-  ret = drmModeAddFB2 (alloc->priv->fd, w, h, fmt, bo_handles, pitches,
-      offsets, &kmsmem->fb_id, 0);
+  if (GST_VIDEO_INFO_IS_AFBC (vinfo)) {
+    guint64 modifiers[4] = { 0 };
+
+    for (i = 0; i < num_planes; i++)
+      modifiers[i] = DRM_AFBC_MODIFIER;
+
+    if (fmt == DRM_FORMAT_NV12 || fmt == DRM_FORMAT_NV12_10 ||
+        fmt == DRM_FORMAT_NV16) {
+      /* The newer kernel might use new formats instead */
+      guint32 _handles[4] = { bo_handles[0], 0, };
+      guint32 _pitches[4] = { pitches[0], 0, };
+      guint32 _offsets[4] = { offsets[0], 0, };
+      guint64 _modifiers[4] = { modifiers[0], 0, };
+      guint32 _fmt;
+
+      if (fmt == DRM_FORMAT_NV12) {
+        _fmt = DRM_FORMAT_YUV420_8BIT;
+        /* The bpp of YUV420_8BIT is 12 */
+        _pitches[0] *= 1.5;
+      } else if (fmt == DRM_FORMAT_NV12_10) {
+        _fmt = DRM_FORMAT_YUV420_10BIT;
+        /* The bpp of YUV420_10BIT is 15 */
+        _pitches[0] *= 1.5;
+      } else {
+        _fmt = DRM_FORMAT_YUYV;
+        /* The bpp of YUYV (AFBC) is 16 */
+        _pitches[0] *= 2;
+      }
+
+      ret = drmModeAddFB2WithModifiers (alloc->priv->fd, w, h, _fmt, _handles,
+          _pitches, _offsets, _modifiers, &kmsmem->fb_id,
+          DRM_MODE_FB_MODIFIERS);
+    }
+
+    if (ret)
+      ret = drmModeAddFB2WithModifiers (alloc->priv->fd, w, h, fmt, bo_handles,
+          pitches, offsets, modifiers, &kmsmem->fb_id, DRM_MODE_FB_MODIFIERS);
+  } else {
+    ret = drmModeAddFB2 (alloc->priv->fd, w, h, fmt, bo_handles, pitches,
+        offsets, &kmsmem->fb_id, 0);
+    if (ret && fmt == DRM_FORMAT_NV12_10)
+      ret = drmModeAddFB2 (alloc->priv->fd, w, h, DRM_FORMAT_NV15, bo_handles,
+          pitches, offsets, &kmsmem->fb_id, 0);
+  }
   if (ret) {
     GST_ERROR_OBJECT (alloc, "Failed to bind to framebuffer: %s (%d)",
         g_strerror (errno), errno);
