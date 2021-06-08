@@ -235,7 +235,7 @@ registry_handle_global (void *data, struct wl_registry *registry,
         wl_registry_bind (registry, id, &wp_viewporter_interface, 1);
   } else if (g_strcmp0 (interface, "zwp_linux_dmabuf_v1") == 0) {
     self->dmabuf =
-        wl_registry_bind (registry, id, &zwp_linux_dmabuf_v1_interface, 1);
+        wl_registry_bind (registry, id, &zwp_linux_dmabuf_v1_interface, 2);
     zwp_linux_dmabuf_v1_add_listener (self->dmabuf, &dmabuf_listener, self);
   }
 }

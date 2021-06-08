@@ -33,40 +33,8 @@ GST_DEBUG_CATEGORY_EXTERN (gstwayland_debug);
 
 typedef struct
 {
-  GMutex lock;
-  GCond cond;
   struct wl_buffer *wbuf;
 } ConstructBufferData;
-
-static void
-create_succeeded (void *data, struct zwp_linux_buffer_params_v1 *params,
-    struct wl_buffer *new_buffer)
-{
-  ConstructBufferData *d = data;
-
-  g_mutex_lock (&d->lock);
-  d->wbuf = new_buffer;
-  zwp_linux_buffer_params_v1_destroy (params);
-  g_cond_signal (&d->cond);
-  g_mutex_unlock (&d->lock);
-}
-
-static void
-create_failed (void *data, struct zwp_linux_buffer_params_v1 *params)
-{
-  ConstructBufferData *d = data;
-
-  g_mutex_lock (&d->lock);
-  d->wbuf = NULL;
-  zwp_linux_buffer_params_v1_destroy (params);
-  g_cond_signal (&d->cond);
-  g_mutex_unlock (&d->lock);
-}
-
-static const struct zwp_linux_buffer_params_v1_listener params_listener = {
-  create_succeeded,
-  create_failed
-};
 
 struct wl_buffer *
 gst_wl_linux_dmabuf_construct_wl_buffer (GstBuffer * buf,
@@ -77,7 +45,6 @@ gst_wl_linux_dmabuf_construct_wl_buffer (GstBuffer * buf,
   guint i, width, height;
   guint nplanes, flags = 0;
   struct zwp_linux_buffer_params_v1 *params;
-  gint64 timeout;
   ConstructBufferData data;
 
   g_return_val_if_fail (gst_wl_display_check_format_for_dmabuf (display,
@@ -85,10 +52,6 @@ gst_wl_linux_dmabuf_construct_wl_buffer (GstBuffer * buf,
 
   mem = gst_buffer_peek_memory (buf, 0);
   format = gst_video_format_to_wl_dmabuf_format (GST_VIDEO_INFO_FORMAT (info));
-
-  g_cond_init (&data.cond);
-  g_mutex_init (&data.lock);
-  g_mutex_lock (&data.lock);
 
   width = GST_VIDEO_INFO_WIDTH (info);
   height = GST_VIDEO_INFO_HEIGHT (info);
@@ -131,21 +94,10 @@ gst_wl_linux_dmabuf_construct_wl_buffer (GstBuffer * buf,
     }
   }
 
-  /* Request buffer creation */
-  zwp_linux_buffer_params_v1_add_listener (params, &params_listener, &data);
-  zwp_linux_buffer_params_v1_create (params, width, height, format, flags);
-
-  /* Wait for the request answer */
-  wl_display_flush (display->display);
-  data.wbuf = (gpointer) 0x1;
-  timeout = g_get_monotonic_time () + G_TIME_SPAN_SECOND;
-  while (data.wbuf == (gpointer) 0x1) {
-    if (!g_cond_wait_until (&data.cond, &data.lock, timeout)) {
-      GST_ERROR_OBJECT (mem->allocator, "zwp_linux_buffer_params_v1 time out");
-      zwp_linux_buffer_params_v1_destroy (params);
-      data.wbuf = NULL;
-    }
-  }
+  data.wbuf =
+      zwp_linux_buffer_params_v1_create_immed (params, width, height, format,
+      flags);
+  zwp_linux_buffer_params_v1_destroy (params);
 
 out:
   if (!data.wbuf) {
@@ -155,10 +107,6 @@ out:
         "%dx%d, fmt=%.4s, %d planes",
         data.wbuf, width, height, (char *) &format, nplanes);
   }
-
-  g_mutex_unlock (&data.lock);
-  g_mutex_clear (&data.lock);
-  g_cond_clear (&data.cond);
 
   return data.wbuf;
 }
