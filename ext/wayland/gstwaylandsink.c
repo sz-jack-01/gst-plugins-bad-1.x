@@ -284,6 +284,7 @@ gst_wayland_sink_init (GstWaylandSink * sink)
 {
   g_mutex_init (&sink->display_lock);
   g_mutex_init (&sink->render_lock);
+  g_cond_init (&sink->redraw_cond);
 
   sink->window_handle = 1;
   sink->layer = GST_WL_WINDOW_LAYER_NORMAL;
@@ -439,6 +440,7 @@ gst_wayland_sink_finalize (GObject * object)
 
   g_mutex_clear (&sink->display_lock);
   g_mutex_clear (&sink->render_lock);
+  g_cond_clear (&sink->redraw_cond);
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
@@ -783,6 +785,7 @@ frame_redraw_callback (void *data, struct wl_callback *callback, uint32_t time)
 
   g_mutex_lock (&sink->render_lock);
   sink->redraw_pending = FALSE;
+  g_cond_signal (&sink->redraw_cond);
 
   if (sink->callback) {
     wl_callback_destroy (callback);
@@ -819,6 +822,11 @@ render_last_buffer (GstWaylandSink * sink, gboolean redraw)
   }
   sink->window->fill_mode = sink->fill_mode;
   gst_wl_window_render (sink->window, wlbuffer, info);
+
+  if (g_getenv ("WAYLANDSINK_SYNC_FRAME")) {
+    while (sink->redraw_pending)
+      g_cond_wait (&sink->redraw_cond, &sink->render_lock);
+  }
 }
 
 static void
@@ -1019,6 +1027,7 @@ render:
 
   if (buffer != to_render)
     gst_buffer_unref (to_render);
+
   goto done;
 
 no_window_size:

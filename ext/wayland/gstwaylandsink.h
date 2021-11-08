@@ -71,6 +71,7 @@ struct _GstWaylandSink
   gboolean resend_info;
   gboolean redraw_pending;
   GMutex render_lock;
+  GCond redraw_cond;
   GstBuffer *last_buffer;
   GstVideoRectangle render_rectangle;
 
