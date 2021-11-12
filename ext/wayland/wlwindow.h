@@ -74,6 +74,8 @@ struct _GstWlWindow
 
   /* the size of the video in the buffers */
   gint video_width, video_height;
+  gint crop_x, crop_y, crop_w, crop_h;
+  gboolean crop_dirty;
 
   /* when this is not set both the area_surface and the video_surface are not
    * visible and certain steps should be skipped */

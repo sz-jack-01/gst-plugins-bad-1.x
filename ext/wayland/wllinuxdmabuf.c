@@ -44,8 +44,10 @@ gst_wl_linux_dmabuf_construct_wl_buffer (GstBuffer * buf,
   int format;
   guint i, width, height;
   guint nplanes, flags = 0;
+  gfloat stride_scale = 1.0f;
   struct zwp_linux_buffer_params_v1 *params;
   ConstructBufferData data;
+  guint64 modifier = GST_VIDEO_INFO_IS_AFBC (info) ? DRM_AFBC_MODIFIER : 0;
 
   g_return_val_if_fail (gst_wl_display_check_format_for_dmabuf (display,
           GST_VIDEO_INFO_FORMAT (info)), NULL);
@@ -61,6 +63,27 @@ gst_wl_linux_dmabuf_construct_wl_buffer (GstBuffer * buf,
       G_GSSIZE_FORMAT " (%d x %d), format %s", info->size, width, height,
       gst_wl_dmabuf_format_to_string (format));
 
+  if (GST_VIDEO_INFO_IS_AFBC (info)) {
+    /* Mali uses these formats instead */
+    if (format == DRM_FORMAT_NV12) {
+      format = DRM_FORMAT_YUV420_8BIT;
+      nplanes = 1;
+      stride_scale = 1.5;
+    } else if (format == DRM_FORMAT_NV15) {
+      format = DRM_FORMAT_YUV420_10BIT;
+      nplanes = 1;
+      stride_scale = 1.5;
+    } else if (format == DRM_FORMAT_NV16) {
+      format = DRM_FORMAT_YUYV;
+      nplanes = 1;
+      stride_scale = 2;
+    } else {
+      GST_ERROR_OBJECT (mem->allocator, "unsupported format for AFBC");
+      data.wbuf = NULL;
+      goto out;
+    }
+  }
+
   /* Creation and configuration of planes  */
   params = zwp_linux_dmabuf_v1_create_params (display->dmabuf);
 
@@ -70,11 +93,12 @@ gst_wl_linux_dmabuf_construct_wl_buffer (GstBuffer * buf,
 
     offset = GST_VIDEO_INFO_PLANE_OFFSET (info, i);
     stride = GST_VIDEO_INFO_PLANE_STRIDE (info, i);
+    stride *= stride_scale;
     if (gst_buffer_find_memory (buf, offset, 1, &mem_idx, &length, &skip)) {
       GstMemory *m = gst_buffer_peek_memory (buf, mem_idx);
       gint fd = gst_dmabuf_memory_get_fd (m);
       zwp_linux_buffer_params_v1_add (params, fd, i, m->offset + skip,
-          stride, 0, 0);
+          stride, modifier >> 32, modifier & 0xFFFFFFFF);
     } else {
       GST_ERROR_OBJECT (mem->allocator, "memory does not seem to contain "
           "enough data for the specified format");

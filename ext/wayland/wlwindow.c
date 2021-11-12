@@ -466,6 +466,14 @@ gst_wl_window_resize_video_surface (GstWlWindow * window, gboolean commit)
   dst.w = window->render_rectangle.w;
   dst.h = window->render_rectangle.h;
 
+  if (window->crop_w && window->crop_h) {
+    src.x = window->crop_x;
+    src.y = window->crop_y;
+    src.w = window->crop_w;
+    src.h = window->crop_h;
+  }
+  window->crop_dirty = FALSE;
+
   if (window->video_viewport) {
     if (window->fill_mode == GST_WL_WINDOW_STRETCH) {
       res = dst;
@@ -479,22 +487,20 @@ gst_wl_window_resize_video_surface (GstWlWindow * window, gboolean commit)
 
       if (src_ratio < dst_ratio) {
         int h = src.w / dst_ratio;
-        src.y = (src.h - h) / 2;
+        src.y += (src.h - h) / 2;
         src.h = h;
       } else if (src_ratio > dst_ratio) {
         int w = src.h * dst_ratio;
-        src.x = (src.w - w) / 2;
+        src.x += (src.w - w) / 2;
         src.w = w;
       }
-
-      wp_viewport_set_source (window->video_viewport,
-          wl_fixed_from_int (src.x), wl_fixed_from_int (src.y),
-          wl_fixed_from_int (src.w), wl_fixed_from_int (src.h));
-
       res = dst;
     }
 
     wp_viewport_set_destination (window->video_viewport, res.w, res.h);
+    wp_viewport_set_source (window->video_viewport,
+        wl_fixed_from_int (src.x), wl_fixed_from_int (src.y),
+        wl_fixed_from_int (src.w), wl_fixed_from_int (src.h));
   } else {
     gst_video_sink_center_rect (src, dst, &res, FALSE);
   }
@@ -532,13 +538,14 @@ gst_wl_window_render (GstWlWindow * window, GstWlBuffer * buffer,
     const GstVideoInfo * info)
 {
   if (G_UNLIKELY (info)) {
-    window->video_width =
-        gst_util_uint64_scale_int_round (info->width, info->par_n, info->par_d);
+    window->video_width = info->width;
     window->video_height = info->height;
 
     wl_subsurface_set_sync (window->video_subsurface);
     gst_wl_window_resize_video_surface (window, FALSE);
     gst_wl_window_set_opaque (window, info);
+  } else if (window->crop_dirty) {
+    gst_wl_window_resize_video_surface (window, FALSE);
   }
 
   if (G_LIKELY (buffer)) {

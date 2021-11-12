@@ -78,7 +78,7 @@ GST_DEBUG_CATEGORY (gstwayland_debug);
 #define WL_VIDEO_FORMATS \
     "{ BGRx, BGRA, RGBx, xBGR, xRGB, RGBA, ABGR, ARGB, RGB, BGR, " \
     "RGB16, BGR16, YUY2, YVYU, UYVY, AYUV, NV12, NV21, NV16, NV61, " \
-    "YUV9, YVU9, Y41B, I420, YV12, Y42B, v308 }"
+    "YUV9, YVU9, Y41B, I420, YV12, Y42B, v308, NV12_10LE40 }"
 
 static GstStaticPadTemplate sink_template = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
@@ -604,6 +604,53 @@ gst_wayland_sink_set_context (GstElement * element, GstContext * context)
 }
 
 static GstCaps *
+gst_wayland_sink_fixup_caps (GstWaylandSink * sink, GstCaps * caps)
+{
+  GstCaps *tmp_caps = NULL;
+
+  /* HACK: Allow nv12-10le40 and arm-afbc in main caps */
+
+  if (sink->display->support_nv12_10le40) {
+    tmp_caps = gst_caps_from_string (
+        GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_DMABUF,
+            "NV12_10LE40"));
+
+    /* NV15(AFBC) */
+    if (sink->display->support_afbc) {
+      gst_caps_ref (tmp_caps);
+      gst_caps_append (caps, tmp_caps);
+
+      gst_caps_set_simple (tmp_caps, "arm-afbc", G_TYPE_INT, 1, NULL);
+    }
+
+    gst_caps_append (caps, tmp_caps);
+  }
+
+  /* NV12|NV16 (AFBC) */
+  if (sink->display->support_afbc) {
+    if (gst_wl_display_check_format_for_dmabuf (sink->display,
+            GST_VIDEO_FORMAT_NV12)) {
+      tmp_caps = gst_caps_from_string (
+          GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_DMABUF,
+              "NV12"));
+      gst_caps_set_simple (tmp_caps, "arm-afbc", G_TYPE_INT, 1, NULL);
+      gst_caps_append (caps, tmp_caps);
+    }
+
+    if (gst_wl_display_check_format_for_dmabuf (sink->display,
+            GST_VIDEO_FORMAT_NV16)) {
+      tmp_caps = gst_caps_from_string (
+          GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_DMABUF,
+              "NV16"));
+      gst_caps_set_simple (tmp_caps, "arm-afbc", G_TYPE_INT, 1, NULL);
+      gst_caps_append (caps, tmp_caps);
+    }
+  }
+
+  return caps;
+}
+
+static GstCaps *
 gst_wayland_sink_get_caps (GstBaseSink * bsink, GstCaps * filter)
 {
   GstWaylandSink *sink;
@@ -657,6 +704,8 @@ gst_wayland_sink_get_caps (GstBaseSink * bsink, GstCaps * filter)
     gst_structure_take_value (gst_caps_get_structure (caps, 1), "format",
         &dmabuf_list);
 
+    caps = gst_wayland_sink_fixup_caps (sink, caps);
+
     GST_DEBUG_OBJECT (sink, "display caps: %" GST_PTR_FORMAT, caps);
   }
 
@@ -704,6 +753,8 @@ gst_wayland_sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
   GstWaylandSink *sink;
   gboolean use_dmabuf;
   GstVideoFormat format;
+  GstStructure *s;
+  gint value;
 
   sink = GST_WAYLAND_SINK (bsink);
 
@@ -712,6 +763,15 @@ gst_wayland_sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
   /* extract info from caps */
   if (!gst_video_info_from_caps (&sink->video_info, caps))
     goto invalid_format;
+
+  /* parse AFBC from caps */
+  s = gst_caps_get_structure (caps, 0);
+  if (gst_structure_get_int (s, "arm-afbc", &value)) {
+    if (value)
+      GST_VIDEO_INFO_SET_AFBC (&sink->video_info);
+    else
+      GST_VIDEO_INFO_UNSET_AFBC (&sink->video_info);
+  }
 
   format = GST_VIDEO_INFO_FORMAT (&sink->video_info);
   sink->video_info_changed = TRUE;
@@ -758,8 +818,16 @@ gst_wayland_sink_propose_allocation (GstBaseSink * bsink, GstQuery * query)
   GstBufferPool *pool = NULL;
   gboolean need_pool;
   GstAllocator *alloc;
+  GstStructure *s;
+  gint value;
 
   gst_query_parse_allocation (query, &caps, &need_pool);
+
+  s = gst_caps_get_structure (caps, 0);
+  if (gst_structure_get_int (s, "arm-afbc", &value) && value) {
+    GST_DEBUG_OBJECT (sink, "no allocation for AFBC");
+    return FALSE;
+  }
 
   if (need_pool)
     pool = gst_wayland_create_pool (sink, caps);
@@ -771,6 +839,7 @@ gst_wayland_sink_propose_allocation (GstBaseSink * bsink, GstQuery * query)
   alloc = gst_wl_shm_allocator_get ();
   gst_query_add_allocation_param (query, alloc, NULL);
   gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+  gst_query_add_allocation_meta (query, GST_VIDEO_CROP_META_API_TYPE, NULL);
   g_object_unref (alloc);
 
   return TRUE;
@@ -845,6 +914,7 @@ gst_wayland_sink_show_frame (GstVideoSink * vsink, GstBuffer * buffer)
   GstWaylandSink *sink = GST_WAYLAND_SINK (vsink);
   GstBuffer *to_render;
   GstWlBuffer *wlbuffer;
+  GstVideoCropMeta *crop;
   GstVideoMeta *vmeta;
   GstVideoFormat format;
   GstVideoInfo old_vinfo;
@@ -879,6 +949,23 @@ gst_wayland_sink_show_frame (GstVideoSink * vsink, GstBuffer * buffer)
 
       g_signal_connect_object (sink->window, "closed",
           G_CALLBACK (on_window_closed), sink, 0);
+    }
+  }
+
+  crop = gst_buffer_get_video_crop_meta (buffer);
+  if (crop) {
+    GstWlWindow *window = sink->window;
+
+    if (window->crop_x != crop->x || window->crop_y != crop->y ||
+        window->crop_w != crop->width || window->crop_h != crop->height) {
+      window->crop_x = crop->x;
+      window->crop_y = crop->y;
+      window->crop_w = crop->width;
+      window->crop_h = crop->height;
+      window->crop_dirty = TRUE;
+
+      GST_LOG_OBJECT (sink,
+          "crop %dx%d-%dx%d", crop->x, crop->y, crop->width, crop->height);
     }
   }
 
@@ -931,6 +1018,9 @@ gst_wayland_sink_show_frame (GstVideoSink * vsink, GstBuffer * buffer)
       wbuf = gst_wl_linux_dmabuf_construct_wl_buffer (buffer, sink->display,
           &sink->video_info);
   }
+
+  if (!wbuf && GST_VIDEO_INFO_IS_AFBC (&sink->video_info))
+    goto no_afbc;
 
   if (!wbuf && gst_wl_display_check_format_for_shm (sink->display, format)) {
     if (gst_buffer_n_memory (buffer) == 1 && gst_is_fd_memory (mem))
@@ -1057,6 +1147,12 @@ no_wl_buffer_shm:
 no_wl_buffer:
   {
     GST_ERROR_OBJECT (sink, "buffer %p cannot have a wl_buffer", buffer);
+    ret = GST_FLOW_ERROR;
+    goto done;
+  }
+no_afbc:
+  {
+    GST_ERROR_OBJECT (sink, "could not import AFBC");
     ret = GST_FLOW_ERROR;
     goto done;
   }

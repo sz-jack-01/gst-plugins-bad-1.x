@@ -62,6 +62,8 @@ struct _GstWlDisplay
   struct zwp_linux_dmabuf_v1 *dmabuf;
   GArray *shm_formats;
   GArray *dmabuf_formats;
+  gboolean support_afbc;
+  gboolean support_nv12_10le40;
 
   /* private */
   gboolean own_display;
