@@ -61,6 +61,7 @@ struct _GstWaylandSink
 
   gboolean video_info_changed;
   GstVideoInfo video_info;
+  GstVideoInfo pool_vinfo;
   gboolean fullscreen;
   GstWlWindowLayer layer;
   gdouble alpha;
