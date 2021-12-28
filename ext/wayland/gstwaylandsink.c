@@ -65,6 +65,7 @@ enum
   PROP_DISPLAY,
   PROP_FULLSCREEN,
   PROP_LAYER,
+  PROP_ALPHA,
   PROP_LAST
 };
 
@@ -238,6 +239,11 @@ gst_wayland_sink_class_init (GstWaylandSinkClass * klass)
           GST_TYPE_WL_WINDOW_LAYER, GST_WL_WINDOW_LAYER_NORMAL,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
+  g_object_class_install_property (gobject_class, PROP_ALPHA,
+      g_param_spec_double ("alpha", "Window alpha",
+          "Wayland window alpha", 0.0, 1.0, 1.0,
+          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
   gst_video_overlay_install_properties (gobject_class, PROP_LAST);
 
   gst_type_mark_as_plugin_api (GST_TYPE_WAYLAND_VIDEO, 0);
@@ -251,6 +257,7 @@ gst_wayland_sink_init (GstWaylandSink * sink)
 
   sink->window_handle = 1;
   sink->layer = GST_WL_WINDOW_LAYER_NORMAL;
+  sink->alpha = 1.0;
 }
 
 static void
@@ -278,6 +285,18 @@ gst_wayland_sink_set_layer (GstWaylandSink * sink, GstWlWindowLayer layer)
 }
 
 static void
+gst_wayland_sink_set_alpha (GstWaylandSink * sink, gdouble alpha)
+{
+  if (alpha == sink->alpha)
+    return;
+
+  g_mutex_lock (&sink->render_lock);
+  sink->alpha = alpha;
+  gst_wl_window_ensure_alpha (sink->window, alpha);
+  g_mutex_unlock (&sink->render_lock);
+}
+
+static void
 gst_wayland_sink_get_property (GObject * object,
     guint prop_id, GValue * value, GParamSpec * pspec)
 {
@@ -297,6 +316,11 @@ gst_wayland_sink_get_property (GObject * object,
     case PROP_LAYER:
       GST_OBJECT_LOCK (sink);
       g_value_set_enum (value, sink->layer);
+      GST_OBJECT_UNLOCK (sink);
+      break;
+    case PROP_ALPHA:
+      GST_OBJECT_LOCK (sink);
+      g_value_set_double (value, sink->alpha);
       GST_OBJECT_UNLOCK (sink);
       break;
     default:
@@ -325,6 +349,11 @@ gst_wayland_sink_set_property (GObject * object,
     case PROP_LAYER:
       GST_OBJECT_LOCK (sink);
       gst_wayland_sink_set_layer (sink, g_value_get_enum (value));
+      GST_OBJECT_UNLOCK (sink);
+      break;
+    case PROP_ALPHA:
+      GST_OBJECT_LOCK (sink);
+      gst_wayland_sink_set_alpha (sink, g_value_get_double (value));
       GST_OBJECT_UNLOCK (sink);
       break;
     default:
@@ -783,6 +812,8 @@ gst_wayland_sink_show_frame (GstVideoSink * vsink, GstBuffer * buffer)
       sink->window = gst_wl_window_new_toplevel (sink->display,
           &sink->video_info, sink->fullscreen, sink->layer,
           &sink->render_lock, &sink->render_rectangle);
+      gst_wl_window_ensure_alpha (sink->window, sink->alpha);
+
       g_signal_connect_object (sink->window, "closed",
           G_CALLBACK (on_window_closed), sink, 0);
     }
@@ -1035,6 +1066,7 @@ gst_wayland_sink_set_window_handle (GstVideoOverlay * overlay, guintptr handle)
       } else {
         sink->window = gst_wl_window_new_in_surface (sink->display, surface,
             &sink->render_lock);
+        gst_wl_window_ensure_alpha (sink->window, sink->alpha);
 
         if (sink->last_buffer) {
           /* Resend video info to force resize video surface */

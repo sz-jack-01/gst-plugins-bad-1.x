@@ -24,6 +24,7 @@
 #include <config.h>
 #endif
 
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "wlwindow.h"
@@ -235,19 +236,25 @@ gst_wl_window_new_internal (GstWlDisplay * display, GMutex * render_lock)
 }
 
 static void
-gst_wl_window_set_flags (GstWlWindow * window, const char *flags)
+gst_wl_window_set_config (GstWlWindow * window, const char *config)
 {
-  /* HACK: set window flags through title */
-  char s[128] = "flags=";
-  strcat (s, flags);
-
+  /* HACK: set window config through title */
   if (!window)
     return;
 
   if (window->xdg_toplevel)
-    xdg_toplevel_set_title (window->xdg_toplevel, s);
+    xdg_toplevel_set_title (window->xdg_toplevel, config);
   else if (window->wl_shell_surface)
-    wl_shell_surface_set_title (window->wl_shell_surface, s);
+    wl_shell_surface_set_title (window->wl_shell_surface, config);
+}
+
+void
+gst_wl_window_ensure_alpha (GstWlWindow * window, gdouble alpha)
+{
+  char s[128];
+
+  snprintf (s, sizeof (s), "attrs=alpha:%f;", alpha);
+  gst_wl_window_set_config (window, s);
 }
 
 void
@@ -268,6 +275,8 @@ gst_wl_window_ensure_layer (GstWlWindow * window, GstWlWindowLayer layer)
     default:
       return;
   }
+
+  gst_wl_window_set_config (window, s);
 }
 
 void

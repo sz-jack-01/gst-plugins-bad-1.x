@@ -87,6 +87,7 @@ typedef enum
   GST_WL_WINDOW_LAYER_BOTTOM = 2,
 } GstWlWindowLayer;
 
+void gst_wl_window_ensure_alpha (GstWlWindow * window, gdouble alpha);
 void gst_wl_window_ensure_layer (GstWlWindow * window,
         GstWlWindowLayer layer);
 void gst_wl_window_ensure_fullscreen (GstWlWindow * window,
