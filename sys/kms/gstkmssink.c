@@ -98,6 +98,7 @@ enum
   PROP_DISPLAY_HEIGHT,
   PROP_CONNECTOR_PROPS,
   PROP_PLANE_PROPS,
+  PROP_FORCE_ASPECT_RATIO,
   PROP_N,
 };
 
@@ -1272,7 +1273,7 @@ gst_kms_sink_calculate_display_ratio (GstKMSSink * self, GstVideoInfo * vinfo,
   video_par_n = GST_VIDEO_INFO_PAR_N (vinfo);
   video_par_d = GST_VIDEO_INFO_PAR_D (vinfo);
 
-  if (self->can_scale) {
+  if (self->can_scale && self->keep_aspect) {
     gst_video_calculate_device_ratio (self->hdisplay, self->vdisplay,
         self->mm_width, self->mm_height, &dpy_par_n, &dpy_par_d);
   } else {
@@ -1865,6 +1866,9 @@ retry_set_plane:
   result.x += self->render_rect.x;
   result.y += self->render_rect.y;
 
+  if (self->can_scale && !self->keep_aspect)
+    result = self->render_rect;
+
   if (crop) {
     src.w = crop->width;
     src.h = crop->height;
@@ -2067,6 +2071,9 @@ gst_kms_sink_set_property (GObject * object, guint prop_id,
 
       break;
     }
+    case PROP_FORCE_ASPECT_RATIO:
+      sink->keep_aspect = g_value_get_boolean (value);
+      break;
     default:
       if (!gst_video_overlay_set_property (object, PROP_N, prop_id, value))
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2120,6 +2127,9 @@ gst_kms_sink_get_property (GObject * object, guint prop_id,
     case PROP_PLANE_PROPS:
       gst_value_set_structure (value, sink->plane_props);
       break;
+    case PROP_FORCE_ASPECT_RATIO:
+      g_value_set_boolean (value, sink->keep_aspect);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2150,6 +2160,7 @@ gst_kms_sink_init (GstKMSSink * sink)
   sink->plane_id = -1;
   sink->saved_zpos = -1;
   sink->can_scale = TRUE;
+  sink->keep_aspect = TRUE;
   gst_poll_fd_init (&sink->pollfd);
   sink->poll = gst_poll_new (TRUE);
   gst_video_info_init (&sink->vinfo);
@@ -2318,6 +2329,11 @@ gst_kms_sink_class_init (GstKMSSinkClass * klass)
       g_param_spec_boxed ("plane-properties", "Connector Plane",
       "Additional properties for the plane",
       GST_TYPE_STRUCTURE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  g_properties[PROP_FORCE_ASPECT_RATIO] =
+      g_param_spec_boolean ("force-aspect-ratio", "Force aspect ratio",
+      "When enabled, scaling will respect original aspect ratio", TRUE,
+      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (gobject_class, PROP_N, g_properties);
 

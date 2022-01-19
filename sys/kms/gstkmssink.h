@@ -96,6 +96,8 @@ struct _GstKMSSink {
   gboolean reconfigure;
 
   guintptr window_handle;
+
+  gboolean keep_aspect;
 };
 
 struct _GstKMSSinkClass {
