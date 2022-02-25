@@ -44,6 +44,14 @@ G_BEGIN_DECLS
 typedef struct _GstKMSSink GstKMSSink;
 typedef struct _GstKMSSinkClass GstKMSSinkClass;
 
+typedef enum
+{
+  GST_KMS_SYNC_AUTO = 0,
+  GST_KMS_SYNC_FLIP = 1,
+  GST_KMS_SYNC_VBLANK = 2,
+  GST_KMS_SYNC_NONE = 3,
+} GstKMSSyncMode;
+
 struct _GstKMSSink {
   GstVideoSink videosink;
 
@@ -98,6 +106,8 @@ struct _GstKMSSink {
   guintptr window_handle;
 
   gboolean keep_aspect;
+
+  GstKMSSyncMode sync_mode;
 };
 
 struct _GstKMSSinkClass {

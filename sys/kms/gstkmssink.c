@@ -99,10 +99,13 @@ enum
   PROP_CONNECTOR_PROPS,
   PROP_PLANE_PROPS,
   PROP_FORCE_ASPECT_RATIO,
+  PROP_SYNC_MODE,
   PROP_N,
 };
 
 static GParamSpec *g_properties[PROP_N] = { NULL, };
+
+static GstKMSSyncMode DEFAULT_SYNC_MODE = GST_KMS_SYNC_AUTO;
 
 static void
 gst_kms_sink_set_render_rectangle (GstVideoOverlay * overlay,
@@ -1491,7 +1494,7 @@ static gboolean
 gst_kms_sink_sync (GstKMSSink * self)
 {
   gint ret;
-  gboolean waiting;
+  gboolean waiting, pageflip;
   drmEventContext evctxt = {
     .version = DRM_EVENT_CONTEXT_VERSION,
     .page_flip_handler = sync_handler,
@@ -1510,8 +1513,18 @@ gst_kms_sink_sync (GstKMSSink * self)
   else if (self->pipe > 1)
     vbl.request.type |= self->pipe << DRM_VBLANK_HIGH_CRTC_SHIFT;
 
+  if (self->sync_mode == GST_KMS_SYNC_FLIP) {
+    pageflip = TRUE;
+  } else if (self->sync_mode == GST_KMS_SYNC_VBLANK) {
+    pageflip = FALSE;
+  } else if (self->sync_mode == GST_KMS_SYNC_AUTO) {
+    pageflip = self->modesetting_enabled;
+  } else {
+    return TRUE;
+  }
+
   waiting = TRUE;
-  if (!self->has_async_page_flip && !self->modesetting_enabled) {
+  if (!pageflip) {
     ret = drmWaitVBlank (self->fd, &vbl);
     if (ret)
       goto vblank_failed;
@@ -1916,10 +1929,12 @@ retry_set_plane:
   }
 
 sync_frame:
-  /* Wait for the previous frame to complete redraw */
-  if (!gst_kms_sink_sync (self)) {
-    GST_OBJECT_UNLOCK (self);
-    goto bail;
+  if (self->sync_mode != GST_KMS_SYNC_NONE) {
+    /* Wait for the previous frame to complete redraw */
+    if (!gst_kms_sink_sync (self)) {
+      GST_OBJECT_UNLOCK (self);
+      goto bail;
+    }
   }
 
   /* Save the rendered buffer and its metadata in case a redraw is needed */
@@ -2074,6 +2089,9 @@ gst_kms_sink_set_property (GObject * object, guint prop_id,
     case PROP_FORCE_ASPECT_RATIO:
       sink->keep_aspect = g_value_get_boolean (value);
       break;
+    case PROP_SYNC_MODE:
+      sink->sync_mode = g_value_get_enum (value);
+      break;
     default:
       if (!gst_video_overlay_set_property (object, PROP_N, prop_id, value))
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2130,6 +2148,9 @@ gst_kms_sink_get_property (GObject * object, guint prop_id,
     case PROP_FORCE_ASPECT_RATIO:
       g_value_set_boolean (value, sink->keep_aspect);
       break;
+    case PROP_SYNC_MODE:
+      g_value_set_enum (value, sink->sync_mode);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2161,9 +2182,29 @@ gst_kms_sink_init (GstKMSSink * sink)
   sink->saved_zpos = -1;
   sink->can_scale = TRUE;
   sink->keep_aspect = TRUE;
+  sink->sync_mode = DEFAULT_SYNC_MODE;
   gst_poll_fd_init (&sink->pollfd);
   sink->poll = gst_poll_new (TRUE);
   gst_video_info_init (&sink->vinfo);
+}
+
+#define GST_TYPE_KMS_SYNC_MODE (gst_kms_sync_mode_get_type ())
+static GType
+gst_kms_sync_mode_get_type (void)
+{
+  static GType mode = 0;
+
+  if (!mode) {
+    static const GEnumValue modes[] = {
+      {GST_KMS_SYNC_AUTO, "Sync with page flip or vblank event", "auto"},
+      {GST_KMS_SYNC_FLIP, "Sync with page flip event", "flip"},
+      {GST_KMS_SYNC_VBLANK, "Sync with vblank event", "vblank"},
+      {GST_KMS_SYNC_NONE, "Ignore syncing", "none"},
+      {0, NULL, NULL}
+    };
+    mode = g_enum_register_static ("GstKMSSyncMode", modes);
+  }
+  return mode;
 }
 
 static void
@@ -2333,6 +2374,15 @@ gst_kms_sink_class_init (GstKMSSinkClass * klass)
   g_properties[PROP_FORCE_ASPECT_RATIO] =
       g_param_spec_boolean ("force-aspect-ratio", "Force aspect ratio",
       "When enabled, scaling will respect original aspect ratio", TRUE,
+      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  if (g_getenv ("KMSSINK_DISABLE_VSYNC"))
+    DEFAULT_SYNC_MODE = GST_KMS_SYNC_NONE;
+
+  g_properties[PROP_SYNC_MODE] =
+      g_param_spec_enum ("sync-mode", "Sync mode",
+      "Prefered frame syncing mode",
+      GST_TYPE_KMS_SYNC_MODE, DEFAULT_SYNC_MODE,
       G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (gobject_class, PROP_N, g_properties);
