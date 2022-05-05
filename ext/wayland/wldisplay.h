@@ -24,6 +24,7 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <wayland-client.h>
+#include <wayland-cursor.h>
 #include "xdg-shell-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
@@ -49,6 +50,13 @@ struct _GstWlDisplay
   struct wl_display *display;
   struct wl_display *display_wrapper;
   struct wl_event_queue *queue;
+
+  struct wl_list input_list;
+
+  struct wl_cursor_theme *cursor_theme;
+  struct wl_cursor *default_cursor;
+  struct wl_surface *cursor_surface;
+  struct wl_surface *touch_surface;
 
   /* globals */
   struct wl_registry *registry;

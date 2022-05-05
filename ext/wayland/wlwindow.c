@@ -205,6 +205,8 @@ gst_wl_window_new_internal (GstWlDisplay * display, GMutex * render_lock)
   window->area_surface = wl_compositor_create_surface (display->compositor);
   window->video_surface = wl_compositor_create_surface (display->compositor);
 
+  display->touch_surface = window->area_surface;
+
   window->area_surface_wrapper = wl_proxy_create_wrapper (window->area_surface);
   window->video_surface_wrapper =
       wl_proxy_create_wrapper (window->video_surface);
@@ -307,6 +309,8 @@ gst_wl_window_new_toplevel (GstWlDisplay * display, const GstVideoInfo * info,
   GstWlWindow *window;
 
   window = gst_wl_window_new_internal (display, render_lock);
+
+  wl_surface_set_user_data (window->area_surface, window);
 
   /* Check which protocol we will use (in order of preference) */
   if (display->xdg_wm_base) {
