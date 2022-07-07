@@ -344,7 +344,7 @@ gst_wl_window_new_toplevel (GstWlDisplay * display, const GstVideoInfo * info,
     wl_display_flush (display->display);
 
     g_mutex_lock (&window->configure_mutex);
-    timeout = g_get_monotonic_time () + 100 * G_TIME_SPAN_MILLISECOND;
+    timeout = g_get_monotonic_time () + 10 * G_TIME_SPAN_SECOND;
     while (!window->configured) {
       if (!g_cond_wait_until (&window->configure_cond, &window->configure_mutex,
               timeout)) {
