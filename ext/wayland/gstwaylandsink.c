@@ -1008,6 +1008,10 @@ gst_wayland_sink_show_frame (GstVideoSink * vsink, GstBuffer * buffer)
   if (vmeta) {
     gint i;
 
+    /* prefer the padded width/height from vmeta */
+    sink->video_info.width = vmeta->width;
+    sink->video_info.height = vmeta->height;
+
     for (i = 0; i < vmeta->n_planes; i++) {
       sink->video_info.offset[i] = vmeta->offset[i];
       sink->video_info.stride[i] = vmeta->stride[i];
