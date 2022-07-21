@@ -506,7 +506,17 @@ gst_wl_window_resize_video_surface (GstWlWindow * window, gboolean commit)
         wl_fixed_from_int (src.x), wl_fixed_from_int (src.y),
         wl_fixed_from_int (src.w), wl_fixed_from_int (src.h));
   } else {
-    gst_video_sink_center_rect (src, dst, &res, FALSE);
+    if (window->fill_mode == GST_WL_WINDOW_STRETCH) {
+      res = dst;
+    } else {
+      if (window->fill_mode == GST_WL_WINDOW_CROP)
+        GST_WARNING ("The compositor doesn't support crop mode (no viewport)!");
+
+      gst_video_sink_center_rect (src, dst, &res, TRUE);
+    }
+
+    wl_subsurface_set_position (window->video_subsurface,
+        res.w << 16 | res.x, res.h << 16 | res.y);
   }
 
   wl_subsurface_set_position (window->video_subsurface, res.x, res.y);
