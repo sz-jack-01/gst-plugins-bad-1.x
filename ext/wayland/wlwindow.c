@@ -528,17 +528,19 @@ gst_wl_window_resize_video_surface (GstWlWindow * window, gboolean commit)
 }
 
 static void
-gst_wl_window_set_opaque (GstWlWindow * window, const GstVideoInfo * info)
+gst_wl_window_set_opaque (GstWlWindow * window)
 {
   struct wl_region *region;
 
-  /* Set area opaque */
-  region = wl_compositor_create_region (window->display->compositor);
-  wl_region_add (region, 0, 0, G_MAXINT32, G_MAXINT32);
-  wl_surface_set_opaque_region (window->area_surface, region);
-  wl_region_destroy (region);
+  if (window->area_opaque) {
+    /* Set area opaque */
+    region = wl_compositor_create_region (window->display->compositor);
+    wl_region_add (region, 0, 0, G_MAXINT32, G_MAXINT32);
+    wl_surface_set_opaque_region (window->area_surface, region);
+    wl_region_destroy (region);
+  }
 
-  if (!GST_VIDEO_INFO_HAS_ALPHA (info)) {
+  if (window->video_opaque) {
     /* Set video opaque */
     region = wl_compositor_create_region (window->display->compositor);
     wl_region_add (region, 0, 0, G_MAXINT32, G_MAXINT32);
@@ -554,10 +556,15 @@ gst_wl_window_render (GstWlWindow * window, GstWlBuffer * buffer,
   if (G_UNLIKELY (info)) {
     window->video_width = info->width;
     window->video_height = info->height;
+    window->video_opaque = !GST_VIDEO_INFO_HAS_ALPHA (info);
+    window->area_opaque = window->video_opaque;
+
+    if (g_getenv ("WAYLANDSINK_FORCE_OPAQUE"))
+      window->area_opaque = window->video_opaque = TRUE;
 
     wl_subsurface_set_sync (window->video_subsurface);
     gst_wl_window_resize_video_surface (window, FALSE);
-    gst_wl_window_set_opaque (window, info);
+    gst_wl_window_set_opaque (window);
   } else if (window->crop_dirty) {
     gst_wl_window_resize_video_surface (window, FALSE);
   }
@@ -624,8 +631,13 @@ gst_wl_window_update_borders (GstWlWindow * window)
     height = window->render_rectangle.h;
   }
 
-  /* we want WL_SHM_FORMAT_XRGB8888 */
-  format = GST_VIDEO_FORMAT_BGRx;
+  if (window->area_opaque) {
+    /* we want WL_SHM_FORMAT_XRGB8888 */
+    format = GST_VIDEO_FORMAT_BGRx;
+  } else {
+    /* we want WL_SHM_FORMAT_ARGB8888 */
+    format = GST_VIDEO_FORMAT_BGRA;
+  }
 
   /* draw the area_subsurface */
   gst_video_info_set_format (&info, format, width, height);

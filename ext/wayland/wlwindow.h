@@ -77,6 +77,9 @@ struct _GstWlWindow
   gint crop_x, crop_y, crop_w, crop_h;
   gboolean crop_dirty;
 
+  gboolean video_opaque;
+  gboolean area_opaque;
+
   /* when this is not set both the area_surface and the video_surface are not
    * visible and certain steps should be skipped */
   gboolean is_area_surface_mapped;
