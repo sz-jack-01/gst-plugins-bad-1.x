@@ -100,6 +100,7 @@ enum
   PROP_PLANE_PROPS,
   PROP_FORCE_ASPECT_RATIO,
   PROP_SYNC_MODE,
+  PROP_FULLSCREEN,
   PROP_N,
 };
 
@@ -1974,6 +1975,15 @@ retry_set_plane:
     src.h = video_height;
   }
 
+  if (self->fullscreen) {
+    if (self->can_scale ||
+        (src.w == self->hdisplay && src.h == self->vdisplay)) {
+      result.x = result.y = 0;
+      result.w = self->hdisplay;
+      result.h = self->vdisplay;
+    }
+  }
+
   /* handle out of screen case */
   if ((result.x + result.w) > self->hdisplay)
     result.w = self->hdisplay - result.x;
@@ -2176,6 +2186,9 @@ gst_kms_sink_set_property (GObject * object, guint prop_id,
     case PROP_SYNC_MODE:
       sink->sync_mode = g_value_get_enum (value);
       break;
+    case PROP_FULLSCREEN:
+			sink->fullscreen = g_value_get_boolean (value);
+      break;
     default:
       if (!gst_video_overlay_set_property (object, PROP_N, prop_id, value))
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2234,6 +2247,9 @@ gst_kms_sink_get_property (GObject * object, guint prop_id,
       break;
     case PROP_SYNC_MODE:
       g_value_set_enum (value, sink->sync_mode);
+      break;
+    case PROP_FULLSCREEN:
+      g_value_set_boolean (value, sink->fullscreen);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2467,6 +2483,11 @@ gst_kms_sink_class_init (GstKMSSinkClass * klass)
       g_param_spec_enum ("sync-mode", "Sync mode",
       "Prefered frame syncing mode",
       GST_TYPE_KMS_SYNC_MODE, DEFAULT_SYNC_MODE,
+      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  g_properties[PROP_FULLSCREEN] =
+      g_param_spec_boolean ("fullscreen", "Fullscreen",
+      "Force showing fullscreen", FALSE,
       G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (gobject_class, PROP_N, g_properties);

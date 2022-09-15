@@ -106,6 +106,7 @@ struct _GstKMSSink {
   guintptr window_handle;
 
   gboolean keep_aspect;
+  gboolean fullscreen;
 
   GstKMSSyncMode sync_mode;
 };
