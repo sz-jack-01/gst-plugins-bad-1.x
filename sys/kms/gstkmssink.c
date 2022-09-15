@@ -210,13 +210,38 @@ kms_open (gchar ** driver)
   return fd;
 }
 
+static int
+drm_plane_get_type (int fd, drmModePlane * plane)
+{
+  drmModeObjectPropertiesPtr props;
+  drmModePropertyPtr prop;
+  int i, type = -1;
+
+  props = drmModeObjectGetProperties (fd, plane->plane_id,
+      DRM_MODE_OBJECT_PLANE);
+  if (!props)
+    return -1;
+
+  for (i = 0; i < props->count_props; i++) {
+    prop = drmModeGetProperty (fd, props->props[i]);
+    if (prop && !strcmp (prop->name, "type"))
+      type = props->prop_values[i];
+    drmModeFreeProperty (prop);
+  }
+
+  drmModeFreeObjectProperties (props);
+  return type;
+}
+
 static drmModePlane *
 find_plane_for_crtc (int fd, drmModeRes * res, drmModePlaneRes * pres,
     int crtc_id)
 {
   drmModePlane *plane;
-  int i, pipe;
+  int i, pipe, plane_type, num_primary, fallback;
 
+  num_primary = 0;
+  fallback = 0;
   plane = NULL;
   pipe = -1;
   for (i = 0; i < res->count_crtcs; i++) {
@@ -231,10 +256,25 @@ find_plane_for_crtc (int fd, drmModeRes * res, drmModePlaneRes * pres,
 
   for (i = 0; i < pres->count_planes; i++) {
     plane = drmModeGetPlane (fd, pres->planes[i]);
-    if (plane->possible_crtcs & (1 << pipe))
-      return plane;
+    plane_type = drm_plane_get_type (fd, plane);
+    num_primary += plane_type == DRM_PLANE_TYPE_PRIMARY;
+
+    /* Check unused possible planes */
+    if (plane->possible_crtcs & (1 << pipe) && !plane->fb_id) {
+      if (pipe == num_primary - 1 && plane_type == DRM_PLANE_TYPE_PRIMARY) {
+        /* Prefer the Nth primary plane */
+        return plane;
+      } else if (!fallback && plane_type == DRM_PLANE_TYPE_OVERLAY) {
+        /* Use first overlay plane as fallback */
+        fallback = plane->plane_id;
+      }
+    }
     drmModeFreePlane (plane);
   }
+
+  /* Fallback to the first overlay plane */
+  if (fallback)
+    return drmModeGetPlane (fd, fallback);
 
   return NULL;
 }
@@ -347,6 +387,25 @@ find_first_used_connector (int fd, drmModeRes * res)
 }
 
 static drmModeConnector *
+find_first_available_connector (int fd, drmModeRes * res)
+{
+  int i;
+  drmModeConnector *conn;
+
+  conn = NULL;
+  for (i = 0; i < res->count_connectors; i++) {
+    conn = drmModeGetConnector (fd, res->connectors[i]);
+    if (conn) {
+      if (conn->connection == DRM_MODE_CONNECTED)
+        return conn;
+      drmModeFreeConnector (conn);
+    }
+  }
+
+  return NULL;
+}
+
+static drmModeConnector *
 find_main_monitor (int fd, drmModeRes * res)
 {
   /* Find the LVDS and eDP connectors: those are the main screens. */
@@ -363,6 +422,10 @@ find_main_monitor (int fd, drmModeRes * res)
   /* if we didn't find a connector, grab the first one in use */
   if (!conn)
     conn = find_first_used_connector (fd, res);
+
+  /* if no connector is used, grab the first available one */
+  if (!conn)
+    conn = find_first_available_connector (fd, res);
 
   /* if no connector is used, grab the first one */
   if (!conn)
@@ -910,7 +973,12 @@ gst_kms_sink_start (GstBaseSink * bsink)
   gboolean ret;
 
   self = GST_KMS_SINK (bsink);
+#if 0
   universal_planes = FALSE;
+#else
+  /* Force checking every planes */
+  universal_planes = TRUE;
+#endif
   ret = FALSE;
   res = NULL;
   conn = NULL;
